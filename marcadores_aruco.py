@@ -34,7 +34,8 @@ class ArucoCamera(Node):
         self.T_c_r[:3, 3] = self.t_c_r
 
         self.T_r_c = np.linalg.inv(self.T_c_r)
-                # Subscribers
+        
+        # Subscribers
         self.image_sub = self.create_subscription(
             Image,
             '/robot1/D455_1/color/image_raw',
@@ -63,7 +64,6 @@ class ArucoCamera(Node):
         self.world_frame_id  = 'world'
         self.robot_frame_id  = 'robot_base'
 
-        # 3a) Publica estática: camera_imu_link → robot_base (offset físico)
         quat = quaternion_from_matrix(self.T_c_r)
         
         static_tf = TransformStamped()
@@ -96,7 +96,6 @@ class ArucoCamera(Node):
             3: [7.56, 0.0, -50.0, 0, 0, 0, 1],
             4: [9.56, 0.0, -50.0, 0, 0, 0, 1]
         }
-        #self.init_camera_frame()
 
     def imu_callback(self, msg: Imu):
         # guarda última orientação da IMU
@@ -106,7 +105,7 @@ class ArucoCamera(Node):
         t.header.stamp = self.get_clock().now().to_msg()
         t.header.frame_id = self.world_frame_id
         t.child_frame_id  = self.camera_frame_id
-        # suponha câmera montada com origem em world (0,0,0)
+        # câmera montada com origem em world (0,0,0)
         t.transform.translation.x = 0.0
         t.transform.translation.y = 0.89
         t.transform.translation.z = 0.0
@@ -118,21 +117,6 @@ class ArucoCamera(Node):
         self.cameraMatrix = np.array(msg.k).reshape((3, 3))
         self.distCoeffs = np.array(msg.d)
 
-    '''
-    def init_camera_frame(self):
-        t = TransformStamped()
-        t.header.stamp = self.get_clock().now().to_msg()
-        t.header.frame_id = self.world_frame_id
-        t.child_frame_id = self.camera_frame_id
-        t.transform.translation.x = 0.0
-        t.transform.translation.y = 0.0
-        t.transform.translation.z = 0.0
-        t.transform.rotation.x = 0.0
-        t.transform.rotation.y = 0.0
-        t.transform.rotation.z = 0.0
-        t.transform.rotation.w = 1.0
-        self.tfBroadcaster.sendTransform(t)
-        '''
     def image_callback(self, msg):
         try:
             frame = self.bridge.imgmsg_to_cv2(msg, 'bgr8')
@@ -166,36 +150,10 @@ class ArucoCamera(Node):
                 gx, gy, gz, qx, qy, qz, qw = self.marker_global[int(marker_id)]
                 T_g_a = np.eye(4)
                 T_g_a[:3, 3] = [gx, gy, gz]
-                # se o marcador tiver rotação global != identidade, preencher T_g_a[:3,:3]
-
-                # 4) T^C_R: offset câmera→robô (já enviado como static_tf)
-                # como usamos static broadcaster, não precisamos montar de novo aqui
-
-                # 5) CÁLCULO final: T^G_R = T^G_A · T^A_C · T^C_R
-                #    montamos T^C_R manualmente igual ao static_tf:
-
-                
 
                 # (Aruco no sistema do robô)
                 T_r_a = self.T_r_c.dot(T_c_a)
 
-                #T_g_r = T_g_a.dot(T_a_c).dot(T_c_r)
-                '''
-                # 6) broadcast da pose global do robô
-                t_robot = TransformStamped()
-                t_robot.header.stamp = now
-                t_robot.header.frame_id  = self.world_frame_id
-                t_robot.child_frame_id = 'robot_base'
-                t_robot.transform.translation.x = float(T_g_r[0,3])
-                t_robot.transform.translation.y = float(T_g_r[1,3])
-                t_robot.transform.translation.z = float(T_g_r[2,3])
-                q = quaternion_from_matrix(T_g_r)
-                t_robot.transform.rotation.x = q[0]
-                t_robot.transform.rotation.y = q[1]
-                t_robot.transform.rotation.z = q[2]
-                t_robot.transform.rotation.w = q[3]
-                self.tfBroadcaster.sendTransform(t_robot)
-                '''
                 marker_info = MarkerInfo()
                 marker_info.id = int(marker_id)
                 marker_info.x = float(T_r_a[0,3])
@@ -214,16 +172,6 @@ class ArucoCamera(Node):
 
 
                 marker_info.timestamp = self.get_clock().now().to_msg().sec + self.get_clock().now().to_msg().nanosec * 1e-9                
-                '''
-                marker_info = MarkerInfo()
-                marker_info.id = int(marker_id)
-                marker_info.range = float(tvec[i][0][2]) # Distância no eixo Z
-                marker_info.psi = float(math.atan2(tvec[i][0][0], marker_info.range) * (180 / math.pi))
-                marker_info.x = float(tvec[i][0][0])
-                marker_info.y = float(tvec[i][0][1])
-                marker_info.timestamp = self.get_clock().now().to_msg().sec + self.get_clock().now().to_msg().nanosec * 1e-9
-                marker_info.alpha = float(math.atan2(tvec[i][0][1], marker_info.range) * (180 / math.pi))
-                '''
 
                 # Adiciona o MarkerInfo ao MarkerArray
                 marker_array_msg.markers.append(marker_info)
@@ -236,14 +184,6 @@ class ArucoCamera(Node):
                 t_marker.transform.translation.x = marker_info.x
                 t_marker.transform.translation.y = marker_info.y
                 t_marker.transform.translation.z = marker_info.range
-
-                #rotation_matrix = np.eye(4)
-                #rotation_matrix[0:3, 0:3] = cv2.Rodrigues(rvec[i])[0]
-                #r = quaternion_from_matrix(rotation_matrix)
-                #t_marker.transform.rotation.x = r[0]
-                #t_marker.transform.rotation.y = r[1]
-                #t_marker.transform.rotation.z = r[2]
-                #t_marker.transform.rotation.w = r[3]
 
                 self.tfBroadcaster.sendTransform(t_marker)
 
